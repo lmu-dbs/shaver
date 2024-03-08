@@ -1,5 +1,5 @@
 # ShaVER
-This repository contains code which was used to conduct the experiments from the our work 
+This repository contains code which was used to conduct the experiments from the article 
 "ShaVER: Shapley Values to Estimate Multifactorial Risks in Processes"
 
 ### Run Experiments
