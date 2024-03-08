@@ -1,3 +1,5 @@
+import datetime
+import random
 from itertools import permutations
 
 import networkx as nx
@@ -23,6 +25,81 @@ def detect_common_antecedents(rules):
                 temp.append(rules[x])
             common_antecedents.append(temp)
     return common_antecedents
+
+def calculate_relative_values(numbers: dict):
+    total_sum = sum(numbers.values())
+    for k, v in numbers.items():
+        numbers[k] = (v / total_sum)
+
+def replace_keys(original_dict, key_mapping):
+    key_mapping = {value: key for key, value in key_mapping.items()}
+    # Use a dictionary comprehension to create a new dictionary with replaced keys
+    replaced_dict = {key_mapping.get(key, key): value for key, value in original_dict.items()}
+    return replaced_dict
+
+def get_immediate_dominator(graph, start):
+    return nx.immediate_dominators(graph, start)
+
+def get_dominators(graph, start_node):
+    immediate_dominators = get_immediate_dominator(graph, start_node)
+    # print(f"Immediate dominators: {immediate_dominators}")
+    coll = {x: {x} for x in graph.nodes()}
+    for k, v in coll.items():
+        # print(f"Checking {k}")
+        for n, dom in immediate_dominators.items():
+            if k == dom or dom in v:
+                v.add(n)
+    # print(coll.items())
+    res = {k: len(v) for k, v in coll.items()}
+    return res
+
+def generate_timestamp(start_timestamp, mean_ms, std_dev_ms):
+    # Generate a random value from a Gaussian distribution
+    random_ms = random.gauss(mean_ms, std_dev_ms)
+    # Calculate the new timestamp by adding the random milliseconds to the start timestamp
+    new_timestamp = start_timestamp + datetime.timedelta(milliseconds=random_ms)
+    return new_timestamp
+
+def convert_log_to_traces_synthetic(log):
+    traces_events = []
+    traces_timestamps = []
+    traces_end_timestamps = []
+    # print(log)
+
+    result = log.groupby('case:concept:name')
+    grouped = []
+    for key in result.groups.keys():
+        g = result.get_group(key)
+        g = g[(g['concept:name'] != "Start Event") & (g['concept:name'] != "End Event")]  # Filter Start and End Events
+        grouped.append(g)
+    filtered_log = pd.concat(grouped, axis=0)
+
+    mapping_dict = create_mapping_dict_from_df(filtered_log, 'concept:name')
+    inv_map = {v: k for k, v in mapping_dict.items()}
+
+    # counter = 0
+    for g in grouped:
+        trace_event = []
+        trace_timestamps = []
+        trace_end_timestamps = []
+        for index, row in g.iterrows():
+            act_nr = int(mapping_dict[row['concept:name']])
+            ts = row["time:timestamp"]
+            if row['concept:name'] == 'B' or row['concept:name'] == 'Z':
+                mean_milliseconds = 36000000
+                std_deviation_milliseconds = 18000000
+            else:
+                mean_milliseconds = 3600000  # Mean value for the Gaussian distribution
+                std_deviation_milliseconds = 600000  # Standard deviation for the Gaussian distribution
+            ts_end = generate_timestamp(ts, mean_milliseconds, std_deviation_milliseconds)
+            trace_event.append(act_nr)
+            trace_timestamps.append(ts)
+            trace_end_timestamps.append(ts_end)
+
+        traces_events.append(trace_event)
+        traces_timestamps.append(trace_timestamps)
+        traces_end_timestamps.append(trace_end_timestamps)
+    return filtered_log, traces_events, traces_timestamps, traces_end_timestamps, inv_map
 
 def convert_log_to_traces_bpic11(log, f):
     # selecting rows based on condition

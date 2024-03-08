@@ -1,3 +1,4 @@
+import csv
 import itertools
 import logging
 import os
@@ -11,11 +12,14 @@ import numpy as np
 import pm4py
 import pydotplus
 from matplotlib import pyplot as plt
+
+import constants
+import storage
 from visualize_graph import colorize_graph
 from preprocessing_BPIC11 import DB
 import utils
 from prepare_players import prepare_with_rules
-from risk_assessment import create_successive_std, import_bpic11
+from risk_assessment import create_successive_std, import_bpic11, import_synthetic
 from value_functions.risk import value_function_risk, create_risk_game
 
 logging.basicConfig(
@@ -41,21 +45,20 @@ def perm_generator(seq):
 
 def calculate_permutation(player_list, permutation, game, ref_dict, marginal_contributions, shapley_values, weight,
                           nx_graph, mapping_dict):
-    duration_temp = 0
-    duration_betweenness = 0
+    duration1 = 0
+    duration2 = 0
     for j, player in enumerate(player_list):
         player_index = permutation.index(player)
 
-
         members = set(permutation[:player_index + 1])
         values = game.get_existing_coalition_value(members)
+        coalition_with_player_values = None
         if values:
-            # print("Reusing calculated value for coalition")
             coalition_with_player_values = values
         else:
             coalition_with_player_values = value_function_risk(members, ref_dict, nx_graph, mapping_dict)
-            duration_temp += coalition_with_player_values["temp_duration"]
-            duration_betweenness += coalition_with_player_values["betweenness_duration"]
+            duration1 += coalition_with_player_values["perspective1_duration"]
+            duration2 += coalition_with_player_values["perspective2_duration"]
             game.add_coalition(members, coalition_with_player_values)
 
         members = set(permutation[:player_index])
@@ -65,28 +68,26 @@ def calculate_permutation(player_list, permutation, game, ref_dict, marginal_con
             coalition_without_player_values = values
         else:
             coalition_without_player_values = value_function_risk(members, ref_dict, nx_graph, mapping_dict)
-            duration_temp += coalition_without_player_values["temp_duration"]
-            duration_betweenness += coalition_without_player_values["betweenness_duration"]
+            duration1 += coalition_without_player_values["perspective1_duration"]
+            duration2 += coalition_without_player_values["perspective2_duration"]
             game.add_coalition(members, coalition_without_player_values)
 
-
         marg_cont = {
-            "betweenness": coalition_with_player_values["betweenness"] - coalition_without_player_values[
-                "betweenness"],
-            "temporal_deviation": coalition_with_player_values["temporal_deviation"] -
-                                  coalition_without_player_values["temporal_deviation"]
+            "perspective1": coalition_with_player_values["perspective1"] -
+                            coalition_without_player_values["perspective1"],
+            "perspective2": coalition_with_player_values["perspective2"] - coalition_without_player_values[
+                "perspective2"]
         }
         marginal_contributions.append(marg_cont)
         shapley_values[player].append(marg_cont)
 
-    # https://math.stackexchange.com/questions/3633382/how-can-one-compute-the-shapley-value-using-monte-carlo
-    marginal_betweenness_contributions_norm = utils.normalize_list(
-        [x["betweenness"] for x in marginal_contributions])
-    marginal_temporal_deviation_contributions_norm = utils.normalize_list(
-        [x["temporal_deviation"] for x in marginal_contributions])
+    marginal_perspective2_contributions_norm = utils.normalize_list(
+        [x["perspective2"] for x in marginal_contributions])
+    marginal_perspective1_deviation_contributions_norm = utils.normalize_list(
+        [x["perspective1"] for x in marginal_contributions])
     player_shap_list = list(
-        map(lambda x, y: (weight * x) + ((1 - weight) * y), marginal_betweenness_contributions_norm,
-            marginal_temporal_deviation_contributions_norm))
+        map(lambda x, y: (weight * x) + ((1 - weight) * y), marginal_perspective2_contributions_norm,
+            marginal_perspective1_deviation_contributions_norm))
 
     if len(player_shap_list) > 1:
         prev_shap = sum(player_shap_list[:-1]) / len(player_shap_list[:-1])
@@ -94,7 +95,7 @@ def calculate_permutation(player_list, permutation, game, ref_dict, marginal_con
         epsilon = abs(curr_shap - prev_shap)
     else:
         epsilon = 100.0
-    return epsilon, duration_temp, duration_betweenness
+    return epsilon, duration1, duration2
 
 
 def calculate_shapley_value(game, ref_dict, nx_graph, mapping_dict, weight, e=0.1, max_sample_size=10000,
@@ -114,69 +115,78 @@ def calculate_shapley_value(game, ref_dict, nx_graph, mapping_dict, weight, e=0.
         permutations = [list(next(rand_perms)) for _ in range(max_sample_size)]
         while epsilon > e and i < len(permutations):
             i += 1
-            print(f"Iteration {i}")
-            t_start_iter = time.time()
+            if i % 1000 == 0:
+                print(f"Currently at {i} samples")
+            if i > max_sample_size - 1:
+                raise IndexError("Exceeded maximum sample size")
             permutation = permutations[i]
-            epsilon, duration_temp, duration_betweenness = calculate_permutation(player_list, permutation, game,
-                                                                                 ref_dict, marginal_contributions,
-                                                                                 shapley_values, weight, nx_graph,
-                                                                                 mapping_dict)
-            print(f"Took {time.time() - t_start_iter}s")
+            epsilon, duration_perspective1, duration_perspective2 = calculate_permutation(player_list, permutation,
+                                                                                          game,
+                                                                                          ref_dict,
+                                                                                          marginal_contributions,
+                                                                                          shapley_values, weight,
+                                                                                          nx_graph,
+                                                                                          mapping_dict)
+        print(f"{i} samples")
     else:
         permutations = list(itertools.permutations(player_list))
-        overall_duration_temp = 0
-        overall_duration_betweennes = 0
+        overall_duration_perspective1 = 0
+        overall_duration_perspective2 = 0
         for i, permutation in enumerate(permutations):
             print(f"Permutation: {i}/{len(permutations)}")
-            epsilon, duration_temp, duration_betweenness = calculate_permutation(player_list, permutation, game,
-                                                                                 ref_dict, marginal_contributions,
-                                                                                 shapley_values,
-                                                                                 weight, nx_graph, mapping_dict)
-            overall_duration_temp += duration_temp
-            overall_duration_betweennes += duration_betweenness
-        print(f"Took {overall_duration_temp}s for temporal deviation calculation")
-        print(f"Took {overall_duration_betweennes}s for betweenness calculation")
-
+            epsilon, duration_perspective1, duration_perspective2 = calculate_permutation(player_list, permutation,
+                                                                                          game,
+                                                                                          ref_dict,
+                                                                                          marginal_contributions,
+                                                                                          shapley_values,
+                                                                                          weight, nx_graph,
+                                                                                          mapping_dict)
+            overall_duration_perspective1 += duration_perspective1
+            overall_duration_perspective2 += duration_perspective2
+        print(f"Took {overall_duration_perspective1}s for calculation of perspective 1")
+        print(f"Took {overall_duration_perspective2}s for calculation of perspective 2")
     # Normalize
     res_norm = dict()
     res = dict()
-    all_temp_devs = []
-    all_betweenness = []
+    all_perspective1 = []
+    all_perspective2 = []
     for player, v in shapley_values.items():
         for el in v:
-            all_temp_devs.append(el["temporal_deviation"])
-            all_betweenness.append(el["betweenness"])
-
-    min_betweenness_val = min(all_betweenness)
-    max_betweenness_val = max(all_betweenness)
-    min_temp_devs_val = min(all_temp_devs)
-    max_temp_devs_val = max(all_temp_devs)
-    print(
-        f"Betweenness\nMin: {min_betweenness_val}, Max: {max_betweenness_val}\nTemporal Deviation\nMin: {min_temp_devs_val}, Max: {max_temp_devs_val}")
+            all_perspective1.append(el["perspective1"])
+            all_perspective2.append(el["perspective2"])
+    # sns.distplot(all_temp_devs, hist=True, kde=True,
+    #              bins=int(180 / 5), color='darkblue',
+    #              hist_kws={'edgecolor': 'black'},
+    #              kde_kws={'linewidth': 4})
+    # plt.show()
+    min_perspective2_val = min(all_perspective2)
+    max_perspective2_val = max(all_perspective2)
+    min_perspective1_val = min(all_perspective1)
+    max_perspective1_val = max(all_perspective1)
     for player, v in shapley_values.items():
-        marginal_temporal_deviation_contributions_norm = []
-        marginal_betweenness_contributions_norm = []
-        if min_temp_devs_val == max_temp_devs_val:
-            marginal_temporal_deviation_contributions_norm = [0] * len(v)
+        marginal_perspective1_contributions_norm = []
+        marginal_perspective2_contributions_norm = []
+        if min_perspective1_val == max_perspective1_val:
+            marginal_perspective1_contributions_norm = [0] * len(v)
         else:
-            ts = [x["temporal_deviation"] for x in v]
+            ts = [x["perspective1"] for x in v]
             for x in ts:
-                marginal_temporal_deviation_contributions_norm.append(
-                    (x - min_temp_devs_val) / (max_temp_devs_val - min_temp_devs_val))
+                marginal_perspective1_contributions_norm.append(
+                    (x - min_perspective1_val) / (max_perspective1_val - min_perspective1_val))
 
-        if min_betweenness_val == max_betweenness_val:
-            marginal_betweenness_contributions_norm = [0] * len(v)
+        if min_perspective2_val == max_perspective2_val:
+            marginal_perspective2_contributions_norm = [0] * len(v)
         else:
-            bs = [x["betweenness"] for x in v]
+            bs = [x["perspective2"] for x in v]
             for x in bs:
-                marginal_betweenness_contributions_norm.append(
-                    (x - min_betweenness_val) / (max_betweenness_val - min_betweenness_val))
+                marginal_perspective2_contributions_norm.append(
+                    (x - min_perspective2_val) / (max_perspective2_val - min_perspective2_val))
 
-        comb_norm = list(map(lambda x, y: (weight * x) + ((1 - weight) * y), marginal_betweenness_contributions_norm,
-                             marginal_temporal_deviation_contributions_norm))
+        comb_norm = list(map(lambda x, y: (weight * x) + ((1 - weight) * y), marginal_perspective2_contributions_norm,
+                             marginal_perspective1_contributions_norm))
 
-        comb = list(map(lambda x, y: (weight * x) + ((1 - weight) * y), [x["betweenness"] for x in v],
-                        [x["temporal_deviation"] for x in v]))
+        comb = list(map(lambda x, y: (weight * x) + ((1 - weight) * y), [x["perspective2"] for x in v],
+                        [x["perspective1"] for x in v]))
 
         res_norm[player] = sum(comb_norm) / len(comb_norm)
         res[player] = sum(comb) / len(comb)
@@ -193,43 +203,28 @@ class Result:
 
 
 if __name__ == '__main__':
-    DATASET = "BPIC11"
-    TITLE = "results_" + DATASET
-    # if True: Monte Carlo permutation sampling is applied
-    # else the number of activities is filtered by the ER-Miner
-    APPROXIMATE = True
-    # maximum iterations for Monte Carlo permutation sampling
-    SAMPLE_SIZE = 10000
-    # dependency threshold for heuristics miner
-    DEP_THRESH = 0.6
-    # epsilon value for convergence
-    BASE_EPS = 0.00001
-
-    filt = ['M14', 'M15']  # corpus uteri
-    db_path = "data/bpic11/" + DATASET + "_" + "-".join(filt) + ".pkl"
-
     log = traces_with_timestamps = mapping_dict = None
-    if os.path.isfile(db_path):
-        with open(db_path, "rb") as f:
+    if os.path.isfile(constants.DB_PATH):
+        with open(constants.DB_PATH, "rb") as f:
             db = pickle.load(f)
             log = db.log
             traces_with_timestamps = db.traces_with_timestamps
             mapping_dict = db.mapping_dict
             avg = db.avg
+            med = db.med
             std = db.std
             ext = db.ext
             mysum = db.mysum
             mymax = db.mymax
     else:
-        log, traces_with_timestamps, mapping_dict = import_bpic11(filt)
-        avg, std, ext, mysum, mymax = create_successive_std(traces_with_timestamps=traces_with_timestamps)
-        db = DB(log, mapping_dict, traces_with_timestamps, avg, std, ext, mysum, mymax, DATASET)
+        log, traces_with_timestamps, mapping_dict = import_synthetic()
+        avg, med, std, ext, mysum, mymax = create_successive_std(traces_with_timestamps=traces_with_timestamps)
+        db = DB(log, mapping_dict, traces_with_timestamps, avg, med, std, ext, mysum, mymax, constants.DATASET)
 
-        with open(db_path, 'wb') as handle:
+        with open(constants.DB_PATH, 'wb') as handle:
             pickle.dump(db, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
-
-    heu_net = pm4py.discover_heuristics_net(log, dependency_threshold=DEP_THRESH)
+    heu_net = pm4py.discover_heuristics_net(log, dependency_threshold=constants.DEP_THRESH)
     graph = pm4py.visualization.heuristics_net.visualizer.get_graph(heu_net=heu_net)
 
     nx_graph = nx.nx_pydot.from_pydot(graph)
@@ -241,12 +236,25 @@ if __name__ == '__main__':
     nx_graph_relabeled = nx.relabel_nodes(nx_graph, uid_to_label)
     plt.close()
 
-    # -------------------------------------------------------------------------
-    coalition_path = DATASET + "_current_coalitions.pkl"
-    sublog_path = DATASET + "_" + "-".join(filt)
-    coalition_filepath = os.path.join("data", "bpic11", sublog_path, coalition_path)
+    if constants.METHOD == "dominator":
+        if constants.DOMINATOR_TYPE == "original":
+            storage.count_domination = utils.get_dominators(nx_graph_relabeled, constants.STARTING_ACT)
+            storage.count_domination = utils.replace_keys(storage.count_domination, mapping_dict)
+            utils.calculate_relative_values(storage.count_domination)
+            # print(f"Dominators: {storage.count_domination}")
+        else:
+            raise ValueError("Unknown dominator type")
+    elif constants.METHOD == "betweenness":
+        for k, v in mapping_dict.items():
+            storage.betweenness_centralities[k] = utils.group_betweenness_digraph(nx_graph_relabeled, [v])
+        utils.calculate_relative_values(storage.betweenness_centralities)
+        # print(storage.betweenness_centralities)
 
-    if APPROXIMATE:
+    # -------------------------------------------------------------------------
+    sublog_path = constants.DATASET + "_" + "-".join(constants.FILT)
+    sample_size = constants.SAMPLE_SIZE
+
+    if constants.APPROXIMATE:
         players = mapping_dict.keys()
     else:
         players = prepare_with_rules(traces_with_timestamps, threshold_range=[(0.85, 0.86)])
@@ -257,57 +265,66 @@ if __name__ == '__main__':
     # 0 = full temp deviation, 1 = full betweenness
     # number_range = np.arange(0, 1.05, 0.05)
     # formatted_number_range = [round(num, 2) for num in number_range]
-    formatted_number_range = [0.1, 0.5, 0.9]  # adjust weights here
+    formatted_number_range = constants.WEIGHTS
+    csv_file = open("results/out.csv", mode='w', newline='')
+    writer = csv.writer(csv_file, delimiter=";")
+    writer.writerow(["Weight"] + list(mapping_dict.values()))
     for w in formatted_number_range:
         if w > 0.0:
-            eps = BASE_EPS / w
+            eps = constants.BASE_EPS / w
         else:
-            eps = BASE_EPS
-        if os.path.isfile(coalition_filepath):
-            with open(coalition_filepath, "rb") as f:
-                g.coalitions = pickle.load(f)
+            eps = constants.BASE_EPS
+        # if os.path.isfile(coalition_filepath):
+        #     with open(coalition_filepath, "rb") as f:
+        #         g.coalitions = pickle.load(f)
 
         start_time = time.time()
         r1, normalized_r1, avg_samples = calculate_shapley_value(g, ref_dict=std, nx_graph=nx_graph_relabeled,
                                                                  mapping_dict=mapping_dict, weight=w, e=eps,
-                                                                 max_sample_size=SAMPLE_SIZE,
-                                                                 approximate=APPROXIMATE)
+                                                                 max_sample_size=constants.SAMPLE_SIZE,
+                                                                 approximate=constants.APPROXIMATE)
         overall_time = time.time() - start_time
         print(f"Took {overall_time}s")
 
-        with open(coalition_filepath, 'wb') as handle:
-            pickle.dump(g.coalitions, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        # with open(coalition_filepath, 'wb') as handle:
+        #     pickle.dump(g.coalitions, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
         # Sort result
         normalized_r1 = {k: v for k, v in sorted(normalized_r1.items(), key=lambda item: item[1])}
+        r1 = {k: v for k, v in sorted(r1.items(), key=lambda item: item[1])}
         for node, shapleys in normalized_r1.items():
-            print(f"Node '{mapping_dict[str(node)]}' has an impact of {normalized_r1[node]}")
+            print(
+                f"Node '{mapping_dict[str(node)]}' has a normalized impact of {normalized_r1[node]} (absolute: {r1[node]})")
+
+        temp = [w]
+        for item in mapping_dict.keys():
+            temp.append(round(normalized_r1[item], 4))
+        writer.writerow(temp)
 
         print("Writing colored graph")
         colorize_graph(normalized_r1=normalized_r1, graph=graph, mapping_dict=mapping_dict)
 
         pydotplus.graphviz.Dot.write(graph,
-                                     "results/plots/{0}_{1}_{2}_{3}_{4}_{5}_{6}_graph.png".format(DATASET,
-                                                                                                  str(SAMPLE_SIZE),
-                                                                                                  str(DEP_THRESH),
+                                     "results/plots/{0}_{1}_{2}_{3}_{4}_{5}_{6}_graph.png".format(constants.DATASET,
+                                                                                                  str(constants.SAMPLE_SIZE),
+                                                                                                  str(constants.DEP_THRESH),
                                                                                                   str(w),
                                                                                                   str(avg_samples),
-                                                                                                  BASE_EPS,
-                                                                                                      "-".join(
-                                                                                                          filt)),
+                                                                                                  constants.BASE_EPS,
+                                                                                                  "-".join(
+                                                                                                      constants.FILT)),
                                      format="png")
 
         # gather mapping dict with result
         r = Result(r1, normalized_r1, mapping_dict, graph, overall_time)
 
-        save_path = "data/bpic11/" + sublog_path + "/{0}_{1}_{2}_{3}_{4}_{5}_{6}.pkl".format(DATASET,
-                                                                                             str(SAMPLE_SIZE),
-                                                                                             str(DEP_THRESH),
-                                                                                             str(w),
-                                                                                             str(avg_samples),
-                                                                                             BASE_EPS,
-                                                                                                 "-".join(filt))
+        save_path = "data/synthetic/{0}_{1}_{2}_{3}_{4}_{5}_{6}.pkl".format(constants.DATASET,
+                                                                            str(constants.SAMPLE_SIZE),
+                                                                            str(constants.DEP_THRESH),
+                                                                            str(w),
+                                                                            str(avg_samples),
+                                                                            constants.BASE_EPS,
+                                                                            "-".join(constants.FILT))
 
         with open(save_path, 'wb') as handle:
             pickle.dump(r, handle, protocol=pickle.HIGHEST_PROTOCOL)
-

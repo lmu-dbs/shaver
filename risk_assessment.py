@@ -44,9 +44,10 @@ def create_successive_std(traces_with_timestamps):
             else:
                 acts[str(a1)] = [0]
         else:
-            print("ERROR: Trace is empty!")
+            print("ERROR: Empty sequence!")
 
     avg = {}
+    med = {}
     std = {}
     ext = {}
     mysum = {}
@@ -56,13 +57,28 @@ def create_successive_std(traces_with_timestamps):
         if not values:
             values = [0]
         avg[rel] = np.mean(values)
+        med[rel] = np.median(values)
         std[rel] = np.std(values)
         ext[rel] = np.max(np.abs(values))
         mysum[rel] = np.sum(values)
         mymax[rel] = np.max(values)
 
-    return avg, std, ext, mysum, mymax
+    return avg, med, std, ext, mysum, mymax
 
+
+
+def import_synthetic():
+    log = pm4py.read_xes('data/synthetic/synth3.xes')
+    # mapping_dict = create_mapping_dict(log)
+    log, storage.TRACES_EVENTS, storage.TRACES_TIMESTAMPS, traces_end_timestamps, mapping_dict = utils.convert_log_to_traces_synthetic(log)
+    rootLogger.info(f"Mapping dict: {mapping_dict}")
+
+    traces_with_timestamps = []
+    for i in range(len(storage.TRACES_EVENTS)):
+        traces_with_timestamps.append(
+            list(zip(storage.TRACES_EVENTS[i], storage.TRACES_TIMESTAMPS[i], traces_end_timestamps[i])))
+
+    return log, traces_with_timestamps, mapping_dict
 
 def import_bpic11(f):
     log = pm4py.read_xes('data/bpic11/Hospital_log.xes')  # if preprocessing is necessary make sure that the corresponding log exists
