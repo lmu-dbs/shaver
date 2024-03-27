@@ -19,7 +19,7 @@ from visualize_graph import colorize_graph
 from preprocessing_BPIC11 import DB
 import utils
 from prepare_players import prepare_with_rules
-from risk_assessment import create_successive_std, import_bpic11, import_synthetic
+from risk_assessment import create_successive_std, import_bpic11, import_synthetic, import_bpic20_ID
 from value_functions.risk import value_function_risk, create_risk_game
 
 logging.basicConfig(
@@ -217,7 +217,8 @@ if __name__ == '__main__':
             mysum = db.mysum
             mymax = db.mymax
     else:
-        log, traces_with_timestamps, mapping_dict = import_synthetic()
+        # log, traces_with_timestamps, mapping_dict = import_synthetic()
+        log, traces_with_timestamps, mapping_dict = import_bpic20_ID()
         avg, med, std, ext, mysum, mymax = create_successive_std(traces_with_timestamps=traces_with_timestamps)
         db = DB(log, mapping_dict, traces_with_timestamps, avg, med, std, ext, mysum, mymax, constants.DATASET)
 

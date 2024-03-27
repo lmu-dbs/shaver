@@ -101,6 +101,49 @@ def convert_log_to_traces_synthetic(log):
         traces_end_timestamps.append(trace_end_timestamps)
     return filtered_log, traces_events, traces_timestamps, traces_end_timestamps, inv_map
 
+
+def convert_log_to_traces_bpic20_ID(log):
+    # inv_map = {v: k for k, v in mapping_dict.items()}
+    # print(inv_map)
+    filtered = []
+    log = log.sort_values(['time:timestamp'], ascending=True).groupby('case:concept:name')
+    for key in log.groups.keys():
+        g = log.get_group(key)
+        g.sort_values(['time:timestamp'], ascending=True, inplace=True)  # Sort values by 'timestamp'
+        g.reset_index(inplace=True, drop=True)
+        filtered.append(g)
+
+    filtered_log = pd.concat(filtered, axis=0)
+
+    mapping_dict = create_mapping_dict_from_df(filtered_log, 'concept:name')
+    inv_map = {v: k for k, v in mapping_dict.items()}
+    print(mapping_dict)
+
+    traces_events = []
+    traces_timestamps = []
+    traces_end_timestamps = []
+    for g in filtered:
+        trace_event = []
+        trace_timestamps = []
+        trace_end_timestamps = []
+        for index, row in g.iterrows():
+            act_nr = int(mapping_dict[row['concept:name']])
+            ts = row["time:timestamp"]
+            if index != len(g) - 1:
+                ts_end = g.at[index + 1, "time:timestamp"]
+            else:
+                ts_end = row["time:timestamp"]
+            trace_event.append(act_nr)
+            trace_timestamps.append(ts)
+            trace_end_timestamps.append(ts_end)
+
+        traces_events.append(trace_event)
+        traces_timestamps.append(trace_timestamps)
+        traces_end_timestamps.append(trace_end_timestamps)
+
+    return filtered_log, traces_events, traces_timestamps, traces_end_timestamps, inv_map
+
+
 def convert_log_to_traces_bpic11(log, f):
     # selecting rows based on condition
     result = log[log['case:Diagnosis code'].isin(f)]
