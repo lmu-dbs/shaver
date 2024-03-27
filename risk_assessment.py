@@ -80,6 +80,25 @@ def import_synthetic():
 
     return log, traces_with_timestamps, mapping_dict
 
+def import_bpic20_ID():
+    log = pm4py.read_xes('data/bpic20/InternationalDeclarations.xes')
+    # mapping_dict = create_mapping_dict(log)
+
+    ###
+    # Filter variants here
+    log = pm4py.get_variants(log)
+    ###
+
+    log, storage.TRACES_EVENTS, storage.TRACES_TIMESTAMPS, traces_end_timestamps, mapping_dict = utils.convert_log_to_traces_bpic20_ID(log)
+    rootLogger.info(f"Mapping dict: {mapping_dict}")
+
+    traces_with_timestamps = []
+    for i in range(len(storage.TRACES_EVENTS)):
+        traces_with_timestamps.append(
+            list(zip(storage.TRACES_EVENTS[i], storage.TRACES_TIMESTAMPS[i], traces_end_timestamps[i])))
+
+    return log, traces_with_timestamps, mapping_dict
+
 def import_bpic11(f):
     log = pm4py.read_xes('data/bpic11/Hospital_log.xes')  # if preprocessing is necessary make sure that the corresponding log exists
     log, storage.TRACES_EVENTS, storage.TRACES_TIMESTAMPS, traces_end_timestamps, mapping_dict = utils.convert_log_to_traces_bpic11(

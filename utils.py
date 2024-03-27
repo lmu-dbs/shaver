@@ -102,9 +102,9 @@ def convert_log_to_traces_synthetic(log):
     return filtered_log, traces_events, traces_timestamps, traces_end_timestamps, inv_map
 
 
-def convert_log_to_traces_bpic20_ID(log, mapping_dict):
-    inv_map = {v: k for k, v in mapping_dict.items()}
-    print(inv_map)
+def convert_log_to_traces_bpic20_ID(log):
+    # inv_map = {v: k for k, v in mapping_dict.items()}
+    # print(inv_map)
     filtered = []
     log = log.sort_values(['time:timestamp'], ascending=True).groupby('case:concept:name')
     for key in log.groups.keys():
