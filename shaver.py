@@ -206,8 +206,8 @@ if __name__ == '__main__':
     log = traces_with_timestamps = mapping_dict = None
     if os.path.isfile(constants.DB_PATH):
         with open(constants.DB_PATH, "rb") as f:
-            db = pickle.load(f)
-            log = db.log
+            db = pickle.load(f) # db is an instance from class preprocessing_BPIC11.DB, it is a class with dictionaries /dataframes as attributes
+            log = db.log # an instance of dataframe
             traces_with_timestamps = db.traces_with_timestamps
             mapping_dict = db.mapping_dict
             avg = db.avg
@@ -223,10 +223,10 @@ if __name__ == '__main__':
 
         with open(constants.DB_PATH, 'wb') as handle:
             pickle.dump(db, handle, protocol=pickle.HIGHEST_PROTOCOL)
-
+    variants = pm4py.get_variants(log)
     heu_net = pm4py.discover_heuristics_net(log, dependency_threshold=constants.DEP_THRESH)
     graph = pm4py.visualization.heuristics_net.visualizer.get_graph(heu_net=heu_net)
-
+    pm4py.view_heuristics_net()
     nx_graph = nx.nx_pydot.from_pydot(graph)
     print("Built graph")
 
