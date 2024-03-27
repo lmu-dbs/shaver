@@ -226,7 +226,7 @@ if __name__ == '__main__':
     variants = pm4py.get_variants(log)
     heu_net = pm4py.discover_heuristics_net(log, dependency_threshold=constants.DEP_THRESH)
     graph = pm4py.visualization.heuristics_net.visualizer.get_graph(heu_net=heu_net)
-    pm4py.view_heuristics_net()
+    pm4py.view_heuristics_net(heu_net=heu_net)
     nx_graph = nx.nx_pydot.from_pydot(graph)
     print("Built graph")
 
