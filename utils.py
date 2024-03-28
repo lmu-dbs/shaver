@@ -106,7 +106,7 @@ def convert_log_to_traces_bpic20_ID(log):
     # inv_map = {v: k for k, v in mapping_dict.items()}
     # print(inv_map)
     filtered = []
-    log = log.sort_values(['time:timestamp'], ascending=True).groupby('case:concept:name')
+    log = log.sort_values(['time:timestamp'], ascending=True).groupby('case:concept:name') # group dataframe by different declaration cases
     for key in log.groups.keys():
         g = log.get_group(key)
         g.sort_values(['time:timestamp'], ascending=True, inplace=True)  # Sort values by 'timestamp'

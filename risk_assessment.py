@@ -86,7 +86,7 @@ def import_bpic20_ID():
 
     ###
     # Filter variants here
-    log = pm4py.get_variants(log)
+    # log = pm4py.get_variants(log)
     ###
 
     log, storage.TRACES_EVENTS, storage.TRACES_TIMESTAMPS, traces_end_timestamps, mapping_dict = utils.convert_log_to_traces_bpic20_ID(log)
