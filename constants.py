@@ -7,7 +7,7 @@ DATASET = "SYNTH"
 # FILT = ['M13', 'M14', 'M15', 'M16', '821', '822']
 FILT = "NA"
 DB_PATH = "data/synthetic/synth.pkl"
-DB_PATH = "data/bpic20/InternationalDeclarations..pkl"
+# DB_PATH = "data/bpic20/InternationalDeclarations..pkl"
 
 COALITION_PATH = DATASET + "_current_coalitions.pkl"
 COALITION_FILEPATH = os.path.join("data", "bpic20", COALITION_PATH)

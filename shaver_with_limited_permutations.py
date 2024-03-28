@@ -382,7 +382,7 @@ if __name__ == '__main__':
     # number_range = np.arange(0, 1.05, 0.05)
     # formatted_number_range = [round(num, 2) for num in number_range]
     formatted_number_range = constants.WEIGHTS
-    csv_file = open("results/out_with_limited_permutations.csv", mode='w', newline='')
+    csv_file = open("results/out_with_limited_permutations_syn_data.csv", mode='w', newline='')
     writer = csv.writer(csv_file, delimiter=";")
     writer.writerow(["Weight"] + list(mapping_dict.values()))
     for w in formatted_number_range:
