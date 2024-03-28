@@ -3,6 +3,7 @@ import time
 import constants
 import storage
 from myShapley import Game
+from utils import group_betweenness_digraph
 
 
 def value_function_risk(s: set, ref_dict, nx_graph, mapping_dict):
@@ -12,9 +13,11 @@ def value_function_risk(s: set, ref_dict, nx_graph, mapping_dict):
         perspective1 += ref_dict[p]
     perspective1_duration = time.time()-perspective1_start
     perspective2_start = time.time()
+    group = [mapping_dict[str(p)] for p in s]
+    print(f"Calculating betweenness for group: {group}")
     if constants.METHOD == "betweenness":
-        # perspective2 = group_betweenness_digraph(nx_graph, group, normalized=False)
-        perspective2 = sum([storage.betweenness_centralities[p] if p in storage.betweenness_centralities else 0 for p in s])
+        perspective2 = group_betweenness_digraph(nx_graph, group, normalized=False)
+        # perspective2 = sum([storage.betweenness_centralities[p] if p in storage.betweenness_centralities else 0 for p in s])
     elif constants.METHOD == "dominator":
         if len(s) > 0:
             perspective2 = sum([storage.count_domination[p] if p in storage.count_domination else 0 for p in s])
