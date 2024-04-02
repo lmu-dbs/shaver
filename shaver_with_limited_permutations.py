@@ -21,6 +21,7 @@ import utils
 from prepare_players import prepare_with_rules
 from risk_assessment import create_successive_std, import_bpic11, import_synthetic, import_bpic20_ID
 from value_functions.risk import value_function_risk, create_risk_game
+import itertools
 
 logging.basicConfig(
     level=logging.INFO,
@@ -401,6 +402,24 @@ if __name__ == '__main__':
                                                                  approximate=constants.APPROXIMATE)
         overall_time = time.time() - start_time
         print(f"Took {overall_time}s")
+
+        all_members_permuations = list(itertools.permutations(players))
+        # check if one  all_members_permuations already in the game.coalition functions
+        coalition_value_with_all_members = None
+        for members in all_members_permuations:
+            members = set(members)
+            values = g.get_existing_coalition_value(members)
+            if values:
+                print("Found one coalition functions")
+                coalition_value_with_all_members = values
+                break
+        if coalition_value_with_all_members is None:
+            coalition_value_with_all_members = value_function_risk(all_members_permuations[0], r1, nx_graph,
+                                                                   mapping_dict)
+        comb_all_coalition = w*coalition_value_with_all_members["perspective2"] + (1-w)*coalition_value_with_all_members["perspective1"]
+
+        assert comb_all_coalition == sum(
+            r1.values()), "The efficiency axioms of the Shapley values is not fullfilled"
 
         # with open(coalition_filepath, 'wb') as handle:
         #     pickle.dump(g.coalitions, handle, protocol=pickle.HIGHEST_PROTOCOL)
