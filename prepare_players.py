@@ -1,5 +1,5 @@
 from spmf import Spmf
-
+from spmf_adapted import SpmfExtended
 import utils
 
 
@@ -10,10 +10,10 @@ def prepare_with_rules(traces_with_timestamps, threshold_range):
         traces_events.append([x[0] for x in t])
     utils.write_output("output_sequences.txt", traces_events)
     for support, confidence in threshold_range:
-        spmf = Spmf('ERMiner',
+        spmf = SpmfExtended('ERMiner',
                     input_filename="output_sequences.txt",
                     output_filename="output_rules.txt",
-                    spmf_bin_location_dir="C:/path/to/spmf/",  # insert absolute path to spmf.jar here
+                    spmf_bin_location_dir="external_libs/",  # insert absolute path to spmf.jar here
                     arguments=[support, confidence])
         spmf.run()
         rules_df = spmf.to_pandas_dataframe()

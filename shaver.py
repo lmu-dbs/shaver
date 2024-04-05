@@ -231,9 +231,16 @@ if __name__ == '__main__':
     nx_graph = nx.nx_pydot.from_pydot(graph)
     print("Built graph")
 
+    # uid_to_label = dict()
+    # for n in nx_graph.nodes(data=True):
+    #     uid_to_label[n[0]] = " ".join(n[1]["label"].split(" ")[:-1])
+    # nx_graph_relabeled = nx.relabel_nodes(nx_graph, uid_to_label)
     uid_to_label = dict()
     for n in nx_graph.nodes(data=True):
-        uid_to_label[n[0]] = " ".join(n[1]["label"].split(" ")[:-1])
+        node_label_name = " ".join(n[1]["label"].split(" ")[:-1])
+        if node_label_name == "":
+            node_label_name = n[0]
+        uid_to_label[n[0]] = node_label_name  # " ".join(n[1]["label"].split(" ")[:-1])
     nx_graph_relabeled = nx.relabel_nodes(nx_graph, uid_to_label)
     plt.close()
 

@@ -230,10 +230,10 @@ def group_betweenness_digraph(graph, group, normalized=False):
     :return: betweenness of the group as float
     """
     betweenness = 0.0
-
+    # graph_node_player_lists graph.nodes[list(graph.nodes.keys())[0]]['label'].split()[0]
     non_group_members = [node for node in graph.nodes if node not in group]
     # non_group_members = [node.obj_dict["attributes"]["label"] for node in graph.nodes if node.obj_dict["attributes"]["label"] not in group]
-    for non_group_connection in permutations(non_group_members, 2):
+    for non_group_connection in permutations(non_group_members, 2): # in the non-group nodes randomly select start and destination nodes
         shortest_paths = 0.0
         shortest_paths_through_group = 0.0
         # print(f"Check between {non_group_connection[0]} and {non_group_connection[1]}")

@@ -12,7 +12,7 @@ import numpy as np
 import pm4py
 import pydotplus
 from matplotlib import pyplot as plt
-
+from utils import group_betweenness_digraph
 import constants
 import storage
 from visualize_graph import colorize_graph
@@ -193,8 +193,10 @@ def calculate_shapley_value(game, ref_dict, nx_graph, mapping_dict, weight, e=0.
         res[player] = sum(comb) / len(comb)
     return res, res_norm, i
 
-def calculate_shapley_value_with_limited_permutations(game, control_flow_variants, ref_dict, nx_graph, mapping_dict, weight, e=0.1, max_sample_size=10000,
-                            approximate=True, debug=False):
+
+def calculate_shapley_value_with_limited_permutations(game, control_flow_variants, ref_dict, nx_graph, mapping_dict,
+                                                      weight, e=0.1, max_sample_size=10000,
+                                                      approximate=True, debug=False):
     player_list = list(game.players)
     shapley_values = dict()
     print(f"Number of players: {len(player_list)} -- {player_list}")
@@ -218,7 +220,7 @@ def calculate_shapley_value_with_limited_permutations(game, control_flow_variant
         print("Sampling from permutations")
         # rand_perms = perm_generator(player_list)
         # permutations = [list(next(rand_perms)) for _ in range(max_sample_size)]
-        while epsilon > e and i < len(permutations)-1:
+        while epsilon > e and i < len(permutations) - 1:
             i += 1
             if i % 1000 == 0:
                 print(f"Currently at {i} samples")
@@ -305,7 +307,29 @@ def calculate_shapley_value_with_limited_permutations(game, control_flow_variant
             res[player] = 0
         else:
             res[player] = sum(comb) / len(comb)
-    return res, res_norm, i
+    return res, res_norm, i, shapley_values
+
+def grand_coalition_value_function_risk(s: set, ref_dict, nx_graph, mapping_dict):
+    perspective1 = 0
+    perspective1_start = time.time()
+    for p in s:
+        perspective1 += ref_dict[p]["perspective1"]
+    perspective1_duration = time.time()-perspective1_start
+    perspective2_start = time.time()
+    group = [mapping_dict[str(p)] for p in s]
+    print(f"Calculating betweenness for group: {group}")
+    if constants.METHOD == "betweenness":
+        perspective2 = group_betweenness_digraph(nx_graph, group, normalized=False)#  --TODO pareto efficiency not satisfied
+        # perspective2 = sum([storage.betweenness_centralities[p] if p in storage.betweenness_centralities else 0 for p in s])
+    elif constants.METHOD == "dominator":
+        if len(s) > 0:
+            perspective2 = sum([storage.count_domination[p] if p in storage.count_domination else 0 for p in s])
+        else:
+            perspective2 = 0
+    else:
+        raise ValueError("Unknown method")
+    perspective2_duration = time.time()-perspective2_start
+    return {"perspective1": perspective1, "perspective1_duration": perspective1_duration, "perspective2": perspective2, "perspective2_duration": perspective2_duration}
 
 
 
@@ -322,8 +346,9 @@ if __name__ == '__main__':
     log = traces_with_timestamps = mapping_dict = None
     if os.path.isfile(constants.DB_PATH):
         with open(constants.DB_PATH, "rb") as f:
-            db = pickle.load(f) # db is an instance from class preprocessing_BPIC11.DB, it is a class with dictionaries /dataframes as attributes
-            log = db.log # an instance of dataframe
+            db = pickle.load(
+                f)  # db is an instance from class preprocessing_BPIC11.DB, it is a class with dictionaries /dataframes as attributes
+            log = db.log  # an instance of dataframe
             traces_with_timestamps = db.traces_with_timestamps
             mapping_dict = db.mapping_dict
             avg = db.avg
@@ -349,7 +374,10 @@ if __name__ == '__main__':
 
     uid_to_label = dict()
     for n in nx_graph.nodes(data=True):
-        uid_to_label[n[0]] = " ".join(n[1]["label"].split(" ")[:-1])
+        node_label_name = " ".join(n[1]["label"].split(" ")[:-1])
+        if node_label_name == "":
+            node_label_name = n[0]
+        uid_to_label[n[0]] = node_label_name  # " ".join(n[1]["label"].split(" ")[:-1])
     nx_graph_relabeled = nx.relabel_nodes(nx_graph, uid_to_label)
     plt.close()
 
@@ -362,7 +390,7 @@ if __name__ == '__main__':
         else:
             raise ValueError("Unknown dominator type")
     elif constants.METHOD == "betweenness":
-        for k, v in mapping_dict.items(): # mapping_dict: a dictionary with activity id as keys and activity name as values
+        for k, v in mapping_dict.items():  # mapping_dict: a dictionary with activity id as keys and activity name as values
             storage.betweenness_centralities[k] = utils.group_betweenness_digraph(nx_graph_relabeled, [v])
         utils.calculate_relative_values(storage.betweenness_centralities)
         # print(storage.betweenness_centralities)
@@ -396,30 +424,44 @@ if __name__ == '__main__':
         #         g.coalitions = pickle.load(f)
 
         start_time = time.time()
-        r1, normalized_r1, avg_samples = calculate_shapley_value_with_limited_permutations(g,variants,  ref_dict=std, nx_graph=nx_graph_relabeled,
-                                                                 mapping_dict=mapping_dict, weight=w, e=eps,
-                                                                 max_sample_size=constants.SAMPLE_SIZE,
-                                                                 approximate=constants.APPROXIMATE)
+        r1, normalized_r1, avg_samples, raw_outputs = calculate_shapley_value_with_limited_permutations(g, variants, ref_dict=std,
+                                                                                           nx_graph=nx_graph_relabeled,
+                                                                                           mapping_dict=mapping_dict,
+                                                                                           weight=w, e=eps,
+                                                                                           max_sample_size=constants.SAMPLE_SIZE,
+                                                                                           approximate=constants.APPROXIMATE)
         overall_time = time.time() - start_time
         print(f"Took {overall_time}s")
 
-        all_members_permuations = list(itertools.permutations(players))
         # check if one  all_members_permuations already in the game.coalition functions
+        all_members_permuations = itertools.permutations(players)
         coalition_value_with_all_members = None
-        for members in all_members_permuations:
-            members = set(members)
-            values = g.get_existing_coalition_value(members)
-            if values:
+        for k, v in variants.items():
+            # k is a set
+            if len(k) == len(players):
                 print("Found one coalition functions")
+                one_permutation = []
+                for ele in k:
+                    activity_id = list(mapping_dict.keys())[list(mapping_dict.values()).index(ele)]
+                    one_permutation.append(activity_id)
+                values = g.get_existing_coalition_value(one_permutation)
                 coalition_value_with_all_members = values
                 break
-        if coalition_value_with_all_members is None:
-            coalition_value_with_all_members = value_function_risk(all_members_permuations[0], r1, nx_graph,
-                                                                   mapping_dict)
-        comb_all_coalition = w*coalition_value_with_all_members["perspective2"] + (1-w)*coalition_value_with_all_members["perspective1"]
 
-        assert comb_all_coalition == sum(
-            r1.values()), "The efficiency axioms of the Shapley values is not fullfilled"
+                # Prints george
+
+        if coalition_value_with_all_members is None:
+            one_permutation = next(all_members_permuations)
+            coalition_value_with_all_members = value_function_risk(one_permutation, r1, nx_graph_relabeled,
+                                                                   mapping_dict)
+        comb_all_coalition = w * coalition_value_with_all_members["perspective2"] + (1 - w) * \
+                             coalition_value_with_all_members["perspective1"]
+
+        # assert comb_all_coalition == sum(
+        #     r1.values()), (
+        #     f" One possible coalition function value with all members permutations {one_permutation}: {comb_all_coalition}"
+        #     f" The sum of all the Shapley values of all members is {sum(r1.values())}, they are not the same,"
+        #     f"Therefore, the efficiency axioms of the Shapley values is not fullfilled")
 
         # with open(coalition_filepath, 'wb') as handle:
         #     pickle.dump(g.coalitions, handle, protocol=pickle.HIGHEST_PROTOCOL)

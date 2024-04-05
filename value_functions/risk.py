@@ -16,7 +16,7 @@ def value_function_risk(s: set, ref_dict, nx_graph, mapping_dict):
     group = [mapping_dict[str(p)] for p in s]
     print(f"Calculating betweenness for group: {group}")
     if constants.METHOD == "betweenness":
-        perspective2 = group_betweenness_digraph(nx_graph, group, normalized=False)
+        perspective2 = group_betweenness_digraph(nx_graph, group, normalized=False)#  --TODO pareto efficiency not satisfied
         # perspective2 = sum([storage.betweenness_centralities[p] if p in storage.betweenness_centralities else 0 for p in s])
     elif constants.METHOD == "dominator":
         if len(s) > 0:
