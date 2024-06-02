@@ -1,6 +1,6 @@
-# ShaVER
+# ShaVE-MI
 This repository contains code which was used to conduct the experiments from the article 
-"ShaVER: Shapley Values to Estimate Multifactorial Risks in Processes"
+"ShaVE-MI: Shapley Values to Estimate Multifactorial Impacts in Processes"
 
 ### Run Experiments
 - The `main` in `shaver.py` is used to run experiments. The settings for a simple example run are already configured.
